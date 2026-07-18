@@ -1,0 +1,109 @@
+// Smart Gate — Prisma schema (Supabase Postgres, Vercel-ready)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Student {
+  id            String   @id @default(cuid())
+  name          String
+  grade         String
+  studentNumber String   @unique @map("student_number")
+  qrToken       String   @unique @default(cuid()) @map("qr_token")
+  qrSecret      String   @default("") @map("qr_secret")
+  active        Boolean  @default(true)
+  photoUrl      String?  @map("photo_url")
+  parentName    String?  @map("parent_name")
+  parentPhone   String?  @map("parent_phone")
+  parentEmail   String?  @map("parent_email")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  logs          Log[]
+  notifications Notification[]
+
+  @@map("students")
+}
+
+model Log {
+  id        String   @id @default(cuid())
+  studentId String   @map("student_id")
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  type      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([studentId])
+  @@index([createdAt])
+  @@index([type])
+  @@map("logs")
+}
+
+model Notification {
+  id            String   @id @default(cuid())
+  studentId     String   @map("student_id")
+  student       Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentName   String   @map("student_name")
+  studentNumber String   @map("student_number")
+  grade         String
+  type          String
+  message       String
+  parentName    String?  @map("parent_name")
+  parentPhone   String?  @map("parent_phone")
+  read          Boolean  @default(false)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([studentId])
+  @@index([createdAt])
+  @@index([read])
+  @@map("notifications")
+}
+
+// ---- Teacher (can post announcements / assignments) ----
+model Teacher {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  subject   String
+  password  String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("teachers")
+}
+
+// ---- Announcements & Assignments ----
+model Announcement {
+  id         String    @id @default(cuid())
+  title      String
+  content    String
+  type       String    // "announcement" | "assignment"
+  authorName String    @map("author_name")
+  authorRole String    @map("author_role") // "admin" | "teacher"
+  subject    String?   // optional subject
+  grade      String?   // null = all grades
+  dueDate    DateTime? @map("due_date") // for assignments
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([grade])
+  @@index([type])
+  @@index([createdAt])
+  @@map("announcements")
+}
+
+// ---- Study Material (used by the AI chatbot as context) ----
+model Material {
+  id        String   @id @default(cuid())
+  title     String
+  content   String   // the study text
+  subject   String
+  grade     String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([grade])
+  @@index([subject])
+  @@map("materials")
+}

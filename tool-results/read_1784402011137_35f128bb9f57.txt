@@ -1,0 +1,1490 @@
+     1→"use client";
+     2→
+     3→import { useState, useCallback, useMemo, useEffect } from "react";
+     4→import { useQuery, useQueryClient } from "@tanstack/react-query";
+     5→import {
+     6→  Users,
+     7→  UserCheck,
+     8→  UserX,
+     9→  LogIn,
+    10→  LogOut,
+    11→  Activity,
+    12→  Plus,
+    13→  Search,
+    14→  Trash2,
+    15→  Power,
+    16→  Database,
+    17→  Loader2,
+    18→  ClipboardList,
+    19→  LayoutDashboard,
+    20→  ArrowDownToLine,
+    21→  ArrowUpFromLine,
+    22→  CalendarDays,
+    23→  Filter,
+    24→  Upload,
+    25→  ImageIcon,
+    26→  FileBarChart,
+    27→  Download,
+    28→  FileSpreadsheet,
+    29→  FileText,
+    30→  BellRing,
+    31→  Bell,
+    32→  CheckCheck,
+    33→  Phone,
+    34→  User,
+    35→  Wifi,
+    36→  WifiOff,
+    37→} from "lucide-react";
+    38→import { Button } from "@/components/ui/button";
+    39→import { Input } from "@/components/ui/input";
+    40→import { Label } from "@/components/ui/label";
+    41→import {
+    42→  Card,
+    43→  CardContent,
+    44→  CardDescription,
+    45→  CardHeader,
+    46→  CardTitle,
+    47→} from "@/components/ui/card";
+    48→import { Badge } from "@/components/ui/badge";
+    49→import { Switch } from "@/components/ui/switch";
+    50→import { ScrollArea } from "@/components/ui/scroll-area";
+    51→import { Separator } from "@/components/ui/separator";
+    52→import {
+    53→  Tabs,
+    54→  TabsContent,
+    55→  TabsList,
+    56→  TabsTrigger,
+    57→} from "@/components/ui/tabs";
+    58→import {
+    59→  Table,
+    60→  TableBody,
+    61→  TableCell,
+    62→  TableHead,
+    63→  TableHeader,
+    64→  TableRow,
+    65→} from "@/components/ui/table";
+    66→import {
+    67→  Select,
+    68→  SelectContent,
+    69→  SelectItem,
+    70→  SelectTrigger,
+    71→  SelectValue,
+    72→} from "@/components/ui/select";
+    73→import {
+    74→  Dialog,
+    75→  DialogContent,
+    76→  DialogDescription,
+    77→  DialogFooter,
+    78→  DialogHeader,
+    79→  DialogTitle,
+    80→  DialogTrigger,
+    81→} from "@/components/ui/dialog";
+    82→import {
+    83→  Bar,
+    84→  BarChart,
+    85→  CartesianGrid,
+    86→  ResponsiveContainer,
+    87→  Tooltip,
+    88→  XAxis,
+    89→  YAxis,
+    90→  Legend,
+    91→} from "recharts";
+    92→import { toast } from "@/hooks/use-toast";
+    93→import {
+    94→  type Student,
+    95→  type LogEntry,
+    96→  type Stats,
+    97→  type LogType,
+    98→  type NotificationEntry,
+    99→  type RealtimeNotification,
+   100→  GRADES,
+   101→  formatArabicDateTime,
+   102→  formatArabicDate,
+   103→} from "@/lib/smart-gate/types";
+   104→import { useRealtimeNotifications } from "@/lib/smart-gate/use-realtime";
+   105→import {
+   106→  exportAttendancePDF,
+   107→  exportAttendanceExcel,
+   108→  type ReportData,
+   109→} from "@/lib/smart-gate/exports";
+   110→
+   111→// ---------- fetchers ----------
+   112→async function fetchStudents(search: string): Promise<Student[]> {
+   113→  const res = await fetch(`/api/students?search=${encodeURIComponent(search)}`);
+   114→  if (!res.ok) throw new Error("fail");
+   115→  return (await res.json()).students as Student[];
+   116→}
+   117→async function fetchStats(): Promise<Stats> {
+   118→  const res = await fetch(`/api/stats`);
+   119→  if (!res.ok) throw new Error("fail");
+   120→  return (await res.json()) as Stats;
+   121→}
+   122→async function fetchLogs(
+   123→  date: string | null,
+   124→  type: "ALL" | LogType
+   125→): Promise<LogEntry[]> {
+   126→  const params = new URLSearchParams();
+   127→  if (date) params.set("date", date);
+   128→  if (type !== "ALL") params.set("type", type);
+   129→  params.set("limit", "200");
+   130→  const res = await fetch(`/api/logs?${params.toString()}`);
+   131→  if (!res.ok) throw new Error("fail");
+   132→  return (await res.json()).logs as LogEntry[];
+   133→}
+   134→async function fetchNotifications(): Promise<NotificationEntry[]> {
+   135→  const res = await fetch(`/api/notifications?limit=100`);
+   136→  if (!res.ok) throw new Error("fail");
+   137→  return (await res.json()).notifications as NotificationEntry[];
+   138→}
+   139→async function fetchAttendanceReport(from: string, to: string): Promise<ReportData> {
+   140→  const params = new URLSearchParams();
+   141→  if (from) params.set("from", from);
+   142→  if (to) params.set("to", to);
+   143→  const res = await fetch(`/api/reports/attendance?${params.toString()}`);
+   144→  if (!res.ok) throw new Error("fail");
+   145→  return (await res.json()) as ReportData;
+   146→}
+   147→
+   148→export function AdminView() {
+   149→  const [studentSearch, setStudentSearch] = useState("");
+   150→  const [logDate, setLogDate] = useState<string>("");
+   151→  const [logType, setLogType] = useState<"ALL" | LogType>("ALL");
+   152→  const [reportFrom, setReportFrom] = useState<string>("");
+   153→  const [reportTo, setReportTo] = useState<string>("");
+   154→
+   155→  const queryClient = useQueryClient();
+   156→
+   157→  const { data: students, isLoading: studentsLoading } = useQuery({
+   158→    queryKey: ["students-admin", studentSearch],
+   159→    queryFn: () => fetchStudents(studentSearch),
+   160→  });
+   161→  const { data: stats, isLoading: statsLoading } = useQuery({
+   162→    queryKey: ["stats"],
+   163→    queryFn: fetchStats,
+   164→    refetchInterval: 8000,
+   165→  });
+   166→  const { data: logs, isLoading: logsLoading } = useQuery({
+   167→    queryKey: ["logs", logDate, logType],
+   168→    queryFn: () => fetchLogs(logDate || null, logType),
+   169→  });
+   170→  const { data: notifications, isLoading: notifLoading } = useQuery({
+   171→    queryKey: ["notifications"],
+   172→    queryFn: fetchNotifications,
+   173→    refetchInterval: 10000,
+   174→  });
+   175→  const { data: reportData, isLoading: reportLoading } = useQuery({
+   176→    queryKey: ["attendance-report", reportFrom, reportTo],
+   177→    queryFn: () => fetchAttendanceReport(reportFrom, reportTo),
+   178→  });
+   179→
+   180→  // Real-time admin feed — see new scans the instant they happen
+   181→  const { connected: rtConnected, notifications: rtNotifications } =
+   182→    useRealtimeNotifications({ role: "admin", enabled: true });
+   183→
+   184→  // whenever a real-time notification arrives, refresh the persisted list
+   185→  useEffect(() => {
+   186→    if (rtNotifications.length > 0) {
+   187→      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+   188→      queryClient.invalidateQueries({ queryKey: ["stats"] });
+   189→    }
+   190→  }, [rtNotifications, queryClient]);
+   191→
+   192→  const invalidateAll = useCallback(() => {
+   193→    queryClient.invalidateQueries({ queryKey: ["students-admin"] });
+   194→    queryClient.invalidateQueries({ queryKey: ["stats"] });
+   195→    queryClient.invalidateQueries({ queryKey: ["logs"] });
+   196→    queryClient.invalidateQueries({ queryKey: ["demo-students"] });
+   197→    queryClient.invalidateQueries({ queryKey: ["notifications"] });
+   198→  }, [queryClient]);
+   199→
+   200→  const handleSeed = async () => {
+   201→    try {
+   202→      const res = await fetch("/api/seed", { method: "POST" });
+   203→      const data = await res.json();
+   204→      if (!res.ok) throw new Error(data.error);
+   205→      toast({ title: "تم", description: data.message });
+   206→      invalidateAll();
+   207→    } catch (e) {
+   208→      toast({
+   209→        title: "خطأ",
+   210→        description: e instanceof Error ? e.message : "فشل",
+   211→        variant: "destructive",
+   212→      });
+   213→    }
+   214→  };
+   215→
+   216→  return (
+   217→    <div className="mx-auto flex max-w-6xl flex-col gap-6 py-6">
+   218→      <Tabs defaultValue="overview" className="w-full">
+   219→        <TabsList className="flex w-full overflow-x-auto sm:grid sm:grid-cols-5">
+   220→          <TabsTrigger value="overview">
+   221→            <LayoutDashboard className="ml-2 h-4 w-4" />
+   222→            نظرة عامة
+   223→          </TabsTrigger>
+   224→          <TabsTrigger value="students">
+   225→            <Users className="ml-2 h-4 w-4" />
+   226→            الطلاب
+   227→          </TabsTrigger>
+   228→          <TabsTrigger value="logs">
+   229→            <ClipboardList className="ml-2 h-4 w-4" />
+   230→            السجلات
+   231→          </TabsTrigger>
+   232→          <TabsTrigger value="notifications">
+   233→            <BellRing className="ml-2 h-4 w-4" />
+   234→            الإشعارات
+   235→          </TabsTrigger>
+   236→          <TabsTrigger value="reports">
+   237→            <FileBarChart className="ml-2 h-4 w-4" />
+   238→            التقارير
+   239→          </TabsTrigger>
+   240→        </TabsList>
+   241→
+   242→        {/* ---------- Overview ---------- */}
+   243→        <TabsContent value="overview" className="mt-4 flex flex-col gap-6">
+   244→          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+   245→            <StatCard
+   246→              title="إجمالي الطلاب"
+   247→              value={stats?.totalStudents}
+   248→              loading={statsLoading}
+   249→              icon={<Users className="h-5 w-5" />}
+   250→              tone="primary"
+   251→            />
+   252→            <StatCard
+   253→              title="حسابات نشطة"
+   254→              value={stats?.activeStudents}
+   255→              loading={statsLoading}
+   256→              icon={<UserCheck className="h-5 w-5" />}
+   257→              tone="emerald"
+   258→            />
+   259→            <StatCard
+   260→              title="حسابات موقوفة"
+   261→              value={stats?.inactiveStudents}
+   262→              loading={statsLoading}
+   263→              icon={<UserX className="h-5 w-5" />}
+   264→              tone="destructive"
+   265→            />
+   266→            <StatCard
+   267→              title="حاضر داخل المدرسة الآن"
+   268→              value={stats?.presentNow}
+   269→              loading={statsLoading}
+   270→              icon={<Activity className="h-5 w-5" />}
+   271→              tone="emerald"
+   272→              pulse
+   273→            />
+   274→            <StatCard
+   275→              title="دخول اليوم"
+   276→              value={stats?.todayEntries}
+   277→              loading={statsLoading}
+   278→              icon={<ArrowDownToLine className="h-5 w-5" />}
+   279→              tone="emerald"
+   280→            />
+   281→            <StatCard
+   282→              title="خروج اليوم"
+   283→              value={stats?.todayExits}
+   284→              loading={statsLoading}
+   285→              icon={<ArrowUpFromLine className="h-5 w-5" />}
+   286→              tone="amber"
+   287→            />
+   288→            <StatCard
+   289→              title="إشعارات أولياء الأمور اليوم"
+   290→              value={stats?.todayNotifications}
+   291→              loading={statsLoading}
+   292→              icon={<BellRing className="h-5 w-5" />}
+   293→              tone="primary"
+   294→            />
+   295→          </div>
+   296→
+   297→          <Card>
+   298→            <CardHeader>
+   299→              <CardTitle className="flex items-center gap-2 text-lg">
+   300→                <Activity className="h-5 w-5 text-primary" />
+   301→                نشاط البوابة خلال اليوم
+   302→              </CardTitle>
+   303→              <CardDescription>
+   304→                توزيع عمليات الدخول والخروج حسب الساعة (من 7 صباحاً حتى 6 مساءً)
+   305→              </CardDescription>
+   306→            </CardHeader>
+   307→            <CardContent>
+   308→              {statsLoading ? (
+   309→                <div className="flex h-64 items-center justify-center">
+   310→                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+   311→                </div>
+   312→              ) : (
+   313→                <div className="h-72 w-full" dir="ltr">
+   314→                  <ResponsiveContainer width="100%" height="100%">
+   315→                    <BarChart
+   316→                      data={stats?.hours ?? []}
+   317→                      margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
+   318→                    >
+   319→                      <CartesianGrid
+   320→                        strokeDasharray="3 3"
+   321→                        vertical={false}
+   322→                        stroke="oklch(0.9 0.01 162)"
+   323→                      />
+   324→                      <XAxis
+   325→                        dataKey="hour"
+   326→                        tick={{ fontSize: 11 }}
+   327→                        stroke="oklch(0.5 0.02 165)"
+   328→                      />
+   329→                      <YAxis
+   330→                        allowDecimals={false}
+   331→                        tick={{ fontSize: 11 }}
+   332→                        stroke="oklch(0.5 0.02 165)"
+   333→                      />
+   334→                      <Tooltip
+   335→                        contentStyle={{
+   336→                          borderRadius: 12,
+   337→                          border: "1px solid oklch(0.9 0.01 162)",
+   338→                          fontSize: 13,
+   339→                        }}
+   340→                        labelStyle={{ fontWeight: 600 }}
+   341→                      />
+   342→                      <Legend
+   343→                        wrapperStyle={{ fontSize: 13 }}
+   344→                        formatter={(v) =>
+   345→                          v === "entries" ? "دخول" : "خروج"
+   346→                        }
+   347→                      />
+   348→                      <Bar
+   349→                        dataKey="entries"
+   350→                        name="entries"
+   351→                        fill="oklch(0.596 0.145 162.48)"
+   352→                        radius={[4, 4, 0, 0]}
+   353→                      />
+   354→                      <Bar
+   355→                        dataKey="exits"
+   356→                        name="exits"
+   357→                        fill="oklch(0.769 0.188 70.08)"
+   358→                        radius={[4, 4, 0, 0]}
+   359→                      />
+   360→                    </BarChart>
+   361→                  </ResponsiveContainer>
+   362→                </div>
+   363→              )}
+   364→            </CardContent>
+   365→          </Card>
+   366→
+   367→          {stats && stats.totalStudents === 0 && (
+   368→            <Card className="border-dashed">
+   369→              <CardContent className="flex flex-col items-center justify-center gap-4 py-10 text-center">
+   370→                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+   371→                  <Database className="h-7 w-7" />
+   372→                </div>
+   373→                <div>
+   374→                  <p className="font-semibold">لا يوجد طلاب بعد</p>
+   375→                  <p className="text-sm text-muted-foreground">
+   376→                    ابدأ بإضافة طلاب أو أضف بيانات تجريبية بضغطة واحدة
+   377→                  </p>
+   378→                </div>
+   379→                <Button onClick={handleSeed}>
+   380→                  <Plus className="ml-2 h-4 w-4" />
+   381→                  إضافة بيانات تجريبية
+   382→                </Button>
+   383→              </CardContent>
+   384→            </Card>
+   385→          )}
+   386→        </TabsContent>
+   387→
+   388→        {/* ---------- Students ---------- */}
+   389→        <TabsContent value="students" className="mt-4 flex flex-col gap-4">
+   390→          <StudentsToolbar
+   391→            search={studentSearch}
+   392→            onSearch={setStudentSearch}
+   393→            onSeed={handleSeed}
+   394→            onCreated={invalidateAll}
+   395→          />
+   396→
+   397→          <Card>
+   398→            <CardContent className="p-0">
+   399→              {studentsLoading ? (
+   400→                <div className="flex items-center justify-center py-12 text-muted-foreground">
+   401→                  <Loader2 className="ml-2 h-5 w-5 animate-spin" />
+   402→                  جارٍ التحميل...
+   403→                </div>
+   404→              ) : students && students.length > 0 ? (
+   405→                <ScrollArea className="h-[460px]">
+   406→                  <Table>
+   407→                    <TableHeader>
+   408→                      <TableRow>
+   409→                        <TableHead className="w-16">الصورة</TableHead>
+   410→                        <TableHead>الاسم</TableHead>
+   411→                        <TableHead className="hidden md:table-cell">
+   412→                          الصف
+   413→                        </TableHead>
+   414→                        <TableHead>رقم الطالب</TableHead>
+   415→                        <TableHead className="hidden lg:table-cell">
+   416→                          ولي الأمر
+   417→                        </TableHead>
+   418→                        <TableHead className="hidden sm:table-cell">
+   419→                          الحركات
+   420→                        </TableHead>
+   421→                        <TableHead>الحالة</TableHead>
+   422→                        <TableHead className="text-left">إجراءات</TableHead>
+   423→                      </TableRow>
+   424→                    </TableHeader>
+   425→                    <TableBody>
+   426→                      {students.map((s) => (
+   427→                        <StudentRow
+   428→                          key={s.id}
+   429→                          student={s}
+   430→                          onChanged={invalidateAll}
+   431→                        />
+   432→                      ))}
+   433→                    </TableBody>
+   434→                  </Table>
+   435→                </ScrollArea>
+   436→              ) : (
+   437→                <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-muted-foreground">
+   438→                  <Users className="h-8 w-8 opacity-40" />
+   439→                  <p>لا يوجد طلاب مطابقون</p>
+   440→                </div>
+   441→              )}
+   442→            </CardContent>
+   443→          </Card>
+   444→        </TabsContent>
+   445→
+   446→        {/* ---------- Logs ---------- */}
+   447→        <TabsContent value="logs" className="mt-4 flex flex-col gap-4">
+   448→          <Card>
+   449→            <CardHeader className="pb-3">
+   450→              <CardTitle className="flex items-center gap-2 text-lg">
+   451→                <Filter className="h-5 w-5 text-primary" />
+   452→                فلترة السجلات
+   453→              </CardTitle>
+   454→            </CardHeader>
+   455→            <CardContent>
+   456→              <div className="flex flex-wrap items-end gap-3">
+   457→                <div className="flex flex-col gap-1.5">
+   458→                  <Label className="flex items-center gap-1 text-xs text-muted-foreground">
+   459→                    <CalendarDays className="h-3.5 w-3.5" /> التاريخ
+   460→                  </Label>
+   461→                  <Input
+   462→                    type="date"
+   463→                    value={logDate}
+   464→                    onChange={(e) => setLogDate(e.target.value)}
+   465→                    className="w-44"
+   466→                  />
+   467→                </div>
+   468→                <div className="flex flex-col gap-1.5">
+   469→                  <Label className="flex items-center gap-1 text-xs text-muted-foreground">
+   470→                    <Filter className="h-3.5 w-3.5" /> النوع
+   471→                  </Label>
+   472→                  <Select
+   473→                    value={logType}
+   474→                    onValueChange={(v) => setLogType(v as "ALL" | LogType)}
+   475→                  >
+   476→                    <SelectTrigger className="w-40">
+   477→                      <SelectValue />
+   478→                    </SelectTrigger>
+   479→                    <SelectContent>
+   480→                      <SelectItem value="ALL">الكل</SelectItem>
+   481→                      <SelectItem value="ENTRY">دخول</SelectItem>
+   482→                      <SelectItem value="EXIT">خروج</SelectItem>
+   483→                    </SelectContent>
+   484→                  </Select>
+   485→                </div>
+   486→                {(logDate || logType !== "ALL") && (
+   487→                  <Button
+   488→                    variant="ghost"
+   489→                    size="sm"
+   490→                    onClick={() => {
+   491→                      setLogDate("");
+   492→                      setLogType("ALL");
+   493→                    }}
+   494→                  >
+   495→                    مسح الفلاتر
+   496→                  </Button>
+   497→                )}
+   498→                <div className="ms-auto flex items-center gap-2 text-sm text-muted-foreground">
+   499→                  <Badge variant="secondary">
+   500→                    {logs?.length ?? 0} سجل
+   501→                  </Badge>
+   502→                </div>
+   503→              </div>
+   504→            </CardContent>
+   505→          </Card>
+   506→
+   507→          <Card>
+   508→            <CardContent className="p-0">
+   509→              {logsLoading ? (
+   510→                <div className="flex items-center justify-center py-12 text-muted-foreground">
+   511→                  <Loader2 className="ml-2 h-5 w-5 animate-spin" />
+   512→                  جارٍ التحميل...
+   513→                </div>
+   514→              ) : logs && logs.length > 0 ? (
+   515→                <ScrollArea className="h-[460px]">
+   516→                  <Table>
+   517→                    <TableHeader>
+   518→                      <TableRow>
+   519→                        <TableHead>الطالب</TableHead>
+   520→                        <TableHead className="hidden md:table-cell">
+   521→                          رقم الطالب
+   522→                        </TableHead>
+   523→                        <TableHead>النوع</TableHead>
+   524→                        <TableHead>الوقت والتاريخ</TableHead>
+   525→                      </TableRow>
+   526→                    </TableHeader>
+   527→                    <TableBody>
+   528→                      {logs.map((l) => (
+   529→                        <TableRow key={l.id}>
+   530→                          <TableCell className="font-medium">
+   531→                            {l.student?.name ?? "—"}
+   532→                          </TableCell>
+   533→                          <TableCell className="hidden text-muted-foreground md:table-cell">
+   534→                            {l.student?.studentNumber ?? "—"}
+   535→                          </TableCell>
+   536→                          <TableCell>
+   537→                            <Badge
+   538→                              variant="outline"
+   539→                              className={
+   540→                                l.type === "ENTRY"
+   541→                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600"
+   542→                                  : "border-amber-500/30 bg-amber-500/10 text-amber-600"
+   543→                              }
+   544→                            >
+   545→                              {l.type === "ENTRY" ? (
+   546→                                <>
+   547→                                  <ArrowDownToLine className="ml-1 h-3 w-3" />
+   548→                                  دخول
+   549→                                </>
+   550→                              ) : (
+   551→                                <>
+   552→                                  <ArrowUpFromLine className="ml-1 h-3 w-3" />
+   553→                                  خروج
+   554→                                </>
+   555→                              )}
+   556→                            </Badge>
+   557→                          </TableCell>
+   558→                          <TableCell className="text-sm text-muted-foreground">
+   559→                            {formatArabicDateTime(l.createdAt)}
+   560→                          </TableCell>
+   561→                        </TableRow>
+   562→                      ))}
+   563→                    </TableBody>
+   564→                  </Table>
+   565→                </ScrollArea>
+   566→              ) : (
+   567→                <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-muted-foreground">
+   568→                  <ClipboardList className="h-8 w-8 opacity-40" />
+   569→                  <p>لا توجد سجلات مطابقة</p>
+   570→                  <p className="text-xs">
+   571→                    جرّب مسح بعض الأكواد من شاشة الأمن
+   572→                  </p>
+   573→                </div>
+   574→              )}
+   575→            </CardContent>
+   576→          </Card>
+   577→        </TabsContent>
+   578→
+   579→        {/* ---------- Notifications ---------- */}
+   580→        <TabsContent
+   581→          value="notifications"
+   582→          className="mt-4 flex flex-col gap-4"
+   583→        >
+   584→          <AdminNotificationsPanel
+   585→            notifications={notifications}
+   586→            loading={notifLoading}
+   587→            rtConnected={rtConnected}
+   588→            rtNotifications={rtNotifications}
+   589→            onChanged={() => {
+   590→              queryClient.invalidateQueries({ queryKey: ["notifications"] });
+   591→            }}
+   592→          />
+   593→        </TabsContent>
+   594→
+   595→        {/* ---------- Reports ---------- */}
+   596→        <TabsContent value="reports" className="mt-4 flex flex-col gap-4">
+   597→          <ReportsPanel
+   598→            data={reportData}
+   599→            loading={reportLoading}
+   600→            from={reportFrom}
+   601→            to={reportTo}
+   602→            onFrom={setReportFrom}
+   603→            onTo={setReportTo}
+   604→          />
+   605→        </TabsContent>
+   606→      </Tabs>
+   607→    </div>
+   608→  );
+   609→}
+   610→
+   611→// ---------- Reports panel ----------
+   612→function ReportsPanel({
+   613→  data,
+   614→  loading,
+   615→  from,
+   616→  to,
+   617→  onFrom,
+   618→  onTo,
+   619→}: {
+   620→  data?: ReportData;
+   621→  loading: boolean;
+   622→  from: string;
+   623→  to: string;
+   624→  onFrom: (v: string) => void;
+   625→  onTo: (v: string) => void;
+   626→}) {
+   627→  return (
+   628→    <>
+   629→      <Card>
+   630→        <CardHeader className="pb-3">
+   631→          <CardTitle className="flex items-center gap-2 text-lg">
+   632→            <FileBarChart className="h-5 w-5 text-primary" />
+   633→            تقرير الحضور والانصراف
+   634→          </CardTitle>
+   635→          <CardDescription>
+   636→            ملخص حركة كل طالب خلال فترة محددة — قابل للتصدير PDF / Excel
+   637→          </CardDescription>
+   638→        </CardHeader>
+   639→        <CardContent className="flex flex-wrap items-end gap-3">
+   640→          <div className="flex flex-col gap-1.5">
+   641→            <Label className="flex items-center gap-1 text-xs text-muted-foreground">
+   642→              <CalendarDays className="h-3.5 w-3.5" /> من تاريخ
+   643→            </Label>
+   644→            <Input
+   645→              type="date"
+   646→              value={from}
+   647→              onChange={(e) => onFrom(e.target.value)}
+   648→              className="w-44"
+   649→            />
+   650→          </div>
+   651→          <div className="flex flex-col gap-1.5">
+   652→            <Label className="flex items-center gap-1 text-xs text-muted-foreground">
+   653→              <CalendarDays className="h-3.5 w-3.5" /> إلى تاريخ
+   654→            </Label>
+   655→            <Input
+   656→              type="date"
+   657→              value={to}
+   658→              onChange={(e) => onTo(e.target.value)}
+   659→              className="w-44"
+   660→            />
+   661→          </div>
+   662→          {(from || to) && (
+   663→            <Button variant="ghost" size="sm" onClick={() => { onFrom(""); onTo(""); }}>
+   664→              مسح الفلاتر
+   665→            </Button>
+   666→          )}
+   667→          <div className="ms-auto flex flex-wrap items-center gap-2">
+   668→            <Button
+   669→              size="sm"
+   670→              variant="outline"
+   671→              disabled={!data || data.rows.length === 0}
+   672→              onClick={() => data && exportAttendancePDF(data)}
+   673→            >
+   674→              <FileText className="ml-2 h-4 w-4" />
+   675→              تصدير PDF
+   676→            </Button>
+   677→            <Button
+   678→              size="sm"
+   679→              disabled={!data || data.rows.length === 0}
+   680→              onClick={() => data && exportAttendanceExcel(data)}
+   681→            >
+   682→              <FileSpreadsheet className="ml-2 h-4 w-4" />
+   683→              تصدير Excel
+   684→            </Button>
+   685→          </div>
+   686→        </CardContent>
+   687→      </Card>
+   688→
+   689→      {data && data.summary && (
+   690→        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+   691→          <StatCard
+   692→            title="عدد الطلاب"
+   693→            value={data.summary.totalStudents}
+   694→            icon={<Users className="h-5 w-5" />}
+   695→            tone="primary"
+   696→          />
+   697→          <StatCard
+   698→            title="إجمالي الدخول"
+   699→            value={data.summary.totalEntries}
+   700→            icon={<ArrowDownToLine className="h-5 w-5" />}
+   701→            tone="emerald"
+   702→          />
+   703→          <StatCard
+   704→            title="إجمالي الخروج"
+   705→            value={data.summary.totalExits}
+   706→            icon={<ArrowUpFromLine className="h-5 w-5" />}
+   707→            tone="amber"
+   708→          />
+   709→          <StatCard
+   710→            title="إجمالي الحركات"
+   711→            value={data.summary.totalMovements}
+   712→            icon={<Activity className="h-5 w-5" />}
+   713→            tone="primary"
+   714→          />
+   715→        </div>
+   716→      )}
+   717→
+   718→      <Card>
+   719→        <CardContent className="p-0">
+   720→          {loading ? (
+   721→            <div className="flex items-center justify-center py-12 text-muted-foreground">
+   722→              <Loader2 className="ml-2 h-5 w-5 animate-spin" />
+   723→              جارٍ إنشاء التقرير...
+   724→            </div>
+   725→          ) : data && data.rows.length > 0 ? (
+   726→            <ScrollArea className="h-[460px]">
+   727→              <Table>
+   728→                <TableHeader>
+   729→                  <TableRow>
+   730→                    <TableHead className="w-10">#</TableHead>
+   731→                    <TableHead>الاسم</TableHead>
+   732→                    <TableHead className="hidden md:table-cell">الصف</TableHead>
+   733→                    <TableHead>رقم الطالب</TableHead>
+   734→                    <TableHead>الدخول</TableHead>
+   735→                    <TableHead>الخروج</TableHead>
+   736→                    <TableHead>الإجمالي</TableHead>
+   737→                    <TableHead className="hidden lg:table-cell">آخر دخول</TableHead>
+   738→                    <TableHead className="hidden lg:table-cell">آخر خروج</TableHead>
+   739→                    <TableHead>الحالة</TableHead>
+   740→                  </TableRow>
+   741→                </TableHeader>
+   742→                <TableBody>
+   743→                  {data.rows.map((r, i) => (
+   744→                    <TableRow key={r.studentNumber}>
+   745→                      <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+   746→                      <TableCell className="font-medium">{r.name}</TableCell>
+   747→                      <TableCell className="hidden text-muted-foreground md:table-cell">{r.grade}</TableCell>
+   748→                      <TableCell className="text-muted-foreground">{r.studentNumber}</TableCell>
+   749→                      <TableCell>
+   750→                        <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600">
+   751→                          {r.entries}
+   752→                        </Badge>
+   753→                      </TableCell>
+   754→                      <TableCell>
+   755→                        <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600">
+   756→                          {r.exits}
+   757→                        </Badge>
+   758→                      </TableCell>
+   759→                      <TableCell className="font-semibold tabular-nums">{r.totalMovements}</TableCell>
+   760→                      <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
+   761→                        {r.lastEntry ? formatArabicDateTime(r.lastEntry) : "—"}
+   762→                      </TableCell>
+   763→                      <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
+   764→                        {r.lastExit ? formatArabicDateTime(r.lastExit) : "—"}
+   765→                      </TableCell>
+   766→                      <TableCell>
+   767→                        {r.active ? (
+   768→                          <Badge className="bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/15">نشط</Badge>
+   769→                        ) : (
+   770→                          <Badge variant="destructive">موقوف</Badge>
+   771→                        )}
+   772→                      </TableCell>
+   773→                    </TableRow>
+   774→                  ))}
+   775→                </TableBody>
+   776→              </Table>
+   777→            </ScrollArea>
+   778→          ) : (
+   779→            <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-muted-foreground">
+   780→              <FileBarChart className="h-8 w-8 opacity-40" />
+   781→              <p>لا توجد بيانات في هذه الفترة</p>
+   782→            </div>
+   783→          )}
+   784→        </CardContent>
+   785→      </Card>
+   786→    </>
+   787→  );
+   788→}
+   789→
+   790→// ---------- Admin notifications panel ----------
+   791→function AdminNotificationsPanel({
+   792→  notifications,
+   793→  loading,
+   794→  rtConnected,
+   795→  rtNotifications,
+   796→  onChanged,
+   797→}: {
+   798→  notifications?: NotificationEntry[];
+   799→  loading: boolean;
+   800→  rtConnected: boolean;
+   801→  rtNotifications: RealtimeNotification[];
+   802→  onChanged: () => void;
+   803→}) {
+   804→  const unread = notifications?.filter((n) => !n.read).length ?? 0;
+   805→
+   806→  const markAllRead = async () => {
+   807→    try {
+   808→      await fetch("/api/notifications", {
+   809→        method: "PATCH",
+   810→        headers: { "Content-Type": "application/json" },
+   811→        body: JSON.stringify({ all: true }),
+   812→      });
+   813→      onChanged();
+   814→      toast({ title: "تم تعليم الكل كمقروء" });
+   815→    } catch {
+   816→      toast({ title: "فشل التحديث", variant: "destructive" });
+   817→    }
+   818→  };
+   819→
+   820→  return (
+   821→    <>
+   822→      <Card>
+   823→        <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+   824→          <div className="flex items-center gap-3">
+   825→            <div
+   826→              className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+   827→                rtConnected
+   828→                  ? "bg-emerald-500/10 text-emerald-600"
+   829→                  : "bg-amber-500/10 text-amber-600"
+   830→              }`}
+   831→            >
+   832→              {rtConnected ? (
+   833→                <Wifi className="h-5 w-5" />
+   834→              ) : (
+   835→                <WifiOff className="h-5 w-5 animate-softpulse" />
+   836→              )}
+   837→            </div>
+   838→            <div>
+   839→              <p className="text-sm font-semibold">
+   840→                {rtConnected
+   841→                  ? "متصل بالخدمة اللحظية"
+   842→                  : "جارٍ الاتصال بالخدمة اللحظية..."}
+   843→              </p>
+   844→              <p className="text-xs text-muted-foreground">
+   845→                الإشعارات الجديدة تظهر هنا فور مسح أي كود عند البوابة
+   846→              </p>
+   847→            </div>
+   848→          </div>
+   849→          <div className="flex items-center gap-2">
+   850→            {unread > 0 && (
+   851→              <Badge className="bg-primary/10 text-primary hover:bg-primary/15">
+   852→                {unread} غير مقروء
+   853→              </Badge>
+   854→            )}
+   855→            {unread > 0 && (
+   856→              <Button variant="outline" size="sm" onClick={markAllRead}>
+   857→                <CheckCheck className="ml-2 h-4 w-4" />
+   858→                تعليم الكل كمقروء
+   859→              </Button>
+   860→            )}
+   861→          </div>
+   862→        </CardContent>
+   863→      </Card>
+   864→
+   865→      {rtNotifications.length > 0 && (
+   866→        <Card className="border-primary/30 bg-primary/5">
+   867→          <CardHeader className="pb-3">
+   868→            <CardTitle className="flex items-center gap-2 text-base">
+   869→              <BellRing className="h-4 w-4 text-primary" />
+   870→              وصل الآن ({rtNotifications.length})
+   871→            </CardTitle>
+   872→          </CardHeader>
+   873→          <CardContent>
+   874→            <ScrollArea className="h-40 pr-1">
+   875→              <div className="flex flex-col gap-2">
+   876→                {rtNotifications.map((n, i) => (
+   877→                  <AdminNotifRow key={`rt-${n.id}-${i}`} n={n} />
+   878→                ))}
+   879→              </div>
+   880→            </ScrollArea>
+   881→          </CardContent>
+   882→        </Card>
+   883→      )}
+   884→
+   885→      <Card>
+   886→        <CardHeader className="pb-3">
+   887→          <CardTitle className="flex items-center gap-2 text-lg">
+   888→            <Bell className="h-5 w-5 text-primary" />
+   889→            سجل الإشعارات المُرسلة لأولياء الأمور
+   890→          </CardTitle>
+   891→          <CardDescription>
+   892→            كل إشعار تم إرساله لولي الأمر عند دخول أو خروج الطالب
+   893→          </CardDescription>
+   894→        </CardHeader>
+   895→        <CardContent className="p-0">
+   896→          {loading ? (
+   897→            <div className="flex items-center justify-center py-12 text-muted-foreground">
+   898→              <Loader2 className="ml-2 h-5 w-5 animate-spin" />
+   899→              جارٍ التحميل...
+   900→            </div>
+   901→          ) : notifications && notifications.length > 0 ? (
+   902→            <ScrollArea className="h-[460px]">
+   903→              <Table>
+   904→                <TableHeader>
+   905→                  <TableRow>
+   906→                    <TableHead>الطالب</TableHead>
+   907→                    <TableHead className="hidden md:table-cell">
+   908→                      ولي الأمر
+   909→                    </TableHead>
+   910→                    <TableHead className="hidden sm:table-cell">
+   911→                      الموبايل
+   912→                    </TableHead>
+   913→                    <TableHead>النوع</TableHead>
+   914→                    <TableHead>الوقت</TableHead>
+   915→                  </TableRow>
+   916→                </TableHeader>
+   917→                <TableBody>
+   918→                  {notifications.map((n) => (
+   919→                    <TableRow key={n.id} className={n.read ? "" : "bg-primary/5"}>
+   920→                      <TableCell className="font-medium">
+   921→                        {n.student?.name ?? "—"}
+   922→                      </TableCell>
+   923→                      <TableCell className="hidden text-muted-foreground md:table-cell">
+   924→                        {n.parentName ?? "—"}
+   925→                      </TableCell>
+   926→                      <TableCell
+   927→                        className="hidden text-muted-foreground md:table-cell"
+   928→                        dir="ltr"
+   929→                      >
+   930→                        {n.parentPhone ?? "—"}
+   931→                      </TableCell>
+   932→                      <TableCell>
+   933→                        <Badge
+   934→                          variant="outline"
+   935→                          className={
+   936→                            n.type === "ENTRY"
+   937→                              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600"
+   938→                              : "border-amber-500/30 bg-amber-500/10 text-amber-600"
+   939→                          }
+   940→                        >
+   941→                          {n.type === "ENTRY" ? (
+   942→                            <>
+   943→                              <ArrowDownToLine className="ml-1 h-3 w-3" />
+   944→                              دخول
+   945→                            </>
+   946→                          ) : (
+   947→                            <>
+   948→                              <ArrowUpFromLine className="ml-1 h-3 w-3" />
+   949→                              خروج
+   950→                            </>
+   951→                          )}
+   952→                        </Badge>
+   953→                      </TableCell>
+   954→                      <TableCell className="text-sm text-muted-foreground">
+   955→                        {formatArabicDateTime(n.createdAt)}
+   956→                      </TableCell>
+   957→                    </TableRow>
+   958→                  ))}
+   959→                </TableBody>
+   960→              </Table>
+   961→            </ScrollArea>
+   962→          ) : (
+   963→            <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-muted-foreground">
+   964→              <Bell className="h-8 w-8 opacity-40" />
+   965→              <p>لا توجد إشعارات بعد</p>
+   966→              <p className="text-xs">
+   967→                امسح كود طالب من شاشة الأمن ليصل إشعار لولي أمره
+   968→              </p>
+   969→            </div>
+   970→          )}
+   971→        </CardContent>
+   972→      </Card>
+   973→    </>
+   974→  );
+   975→}
+   976→
+   977→function AdminNotifRow({ n }: { n: RealtimeNotification }) {
+   978→  const isEntry = n.type === "ENTRY";
+   979→  return (
+   980→    <div className="flex items-start gap-3 rounded-lg border bg-card p-3">
+   981→      <div
+   982→        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+   983→          isEntry
+   984→            ? "bg-emerald-500/10 text-emerald-600"
+   985→            : "bg-amber-500/10 text-amber-600"
+   986→        }`}
+   987→      >
+   988→        {isEntry ? (
+   989→          <ArrowDownToLine className="h-4 w-4" />
+   990→        ) : (
+   991→          <ArrowUpFromLine className="h-4 w-4" />
+   992→        )}
+   993→      </div>
+   994→      <div className="min-w-0 flex-1">
+   995→        <div className="flex items-center justify-between gap-2">
+   996→          <p className="truncate text-sm font-semibold">{n.studentName}</p>
+   997→          <span className="text-xs text-muted-foreground">
+   998→            {formatArabicDateTime(n.createdAt)}
+   999→          </span>
+  1000→        </div>
+  1001→        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+  1002→          {n.message}
+  1003→        </p>
+  1004→      </div>
+  1005→    </div>
+  1006→  );
+  1007→}
+  1008→
+  1009→// ---------- Stat card ----------
+  1010→function StatCard({
+  1011→  title,
+  1012→  value,
+  1013→  loading,
+  1014→  icon,
+  1015→  tone,
+  1016→  pulse,
+  1017→}: {
+  1018→  title: string;
+  1019→  value?: number;
+  1020→  loading?: boolean;
+  1021→  icon: React.ReactNode;
+  1022→  tone: "primary" | "emerald" | "amber" | "destructive";
+  1023→  pulse?: boolean;
+  1024→}) {
+  1025→  const toneClass = {
+  1026→    primary: "bg-primary/10 text-primary",
+  1027→    emerald: "bg-emerald-500/10 text-emerald-600",
+  1028→    amber: "bg-amber-500/10 text-amber-600",
+  1029→    destructive: "bg-destructive/10 text-destructive",
+  1030→  }[tone];
+  1031→
+  1032→  return (
+  1033→    <Card>
+  1034→      <CardContent className="flex items-center gap-3 py-4">
+  1035→        <div
+  1036→          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${toneClass} ${pulse ? "animate-softpulse" : ""}`}
+  1037→        >
+  1038→          {icon}
+  1039→        </div>
+  1040→        <div className="min-w-0">
+  1041→          <p className="truncate text-xs text-muted-foreground">{title}</p>
+  1042→          {loading ? (
+  1043→            <Loader2 className="mt-1 h-5 w-5 animate-spin text-muted-foreground" />
+  1044→          ) : (
+  1045→            <p className="text-2xl font-bold tabular-nums">{value ?? 0}</p>
+  1046→          )}
+  1047→        </div>
+  1048→      </CardContent>
+  1049→    </Card>
+  1050→  );
+  1051→}
+  1052→
+  1053→// ---------- Students toolbar + add dialog ----------
+  1054→function StudentsToolbar({
+  1055→  search,
+  1056→  onSearch,
+  1057→  onSeed,
+  1058→  onCreated,
+  1059→}: {
+  1060→  search: string;
+  1061→  onSearch: (v: string) => void;
+  1062→  onSeed: () => void;
+  1063→  onCreated: () => void;
+  1064→}) {
+  1065→  const [open, setOpen] = useState(false);
+  1066→  return (
+  1067→    <Card>
+  1068→      <CardContent className="flex flex-wrap items-center gap-3 py-4">
+  1069→        <div className="relative min-w-[220px] flex-1">
+  1070→          <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+  1071→          <Input
+  1072→            placeholder="ابحث بالاسم أو الرقم أو الصف..."
+  1073→            value={search}
+  1074→            onChange={(e) => onSearch(e.target.value)}
+  1075→            className="pr-9"
+  1076→          />
+  1077→        </div>
+  1078→        <Button variant="outline" size="sm" onClick={onSeed}>
+  1079→          <Database className="ml-2 h-4 w-4" />
+  1080→          بيانات تجريبية
+  1081→        </Button>
+  1082→        <AddStudentDialog
+  1083→          open={open}
+  1084→          onOpenChange={setOpen}
+  1085→          onCreated={() => {
+  1086→            onCreated();
+  1087→          }}
+  1088→        />
+  1089→      </CardContent>
+  1090→    </Card>
+  1091→  );
+  1092→}
+  1093→
+  1094→function AddStudentDialog({
+  1095→  open,
+  1096→  onOpenChange,
+  1097→  onCreated,
+  1098→}: {
+  1099→  open: boolean;
+  1100→  onOpenChange: (v: boolean) => void;
+  1101→  onCreated: () => void;
+  1102→}) {
+  1103→  const [name, setName] = useState("");
+  1104→  const [grade, setGrade] = useState<string>(GRADES[0]);
+  1105→  const [studentNumber, setStudentNumber] = useState("");
+  1106→  const [parentName, setParentName] = useState("");
+  1107→  const [parentPhone, setParentPhone] = useState("");
+  1108→  const [parentEmail, setParentEmail] = useState("");
+  1109→  const [photoUrl, setPhotoUrl] = useState<string>("");
+  1110→  const [uploading, setUploading] = useState(false);
+  1111→  const [saving, setSaving] = useState(false);
+  1112→
+  1113→  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  1114→    const file = e.target.files?.[0];
+  1115→    if (!file) return;
+  1116→    setUploading(true);
+  1117→    try {
+  1118→      const fd = new FormData();
+  1119→      fd.append("file", file);
+  1120→      const res = await fetch("/api/upload", { method: "POST", body: fd });
+  1121→      const data = await res.json();
+  1122→      if (!res.ok) throw new Error(data.error);
+  1123→      setPhotoUrl(data.url);
+  1124→      toast({ title: "تم رفع الصورة" });
+  1125→    } catch (err) {
+  1126→      toast({
+  1127→        title: "فشل رفع الصورة",
+  1128→        description: err instanceof Error ? err.message : "خطأ",
+  1129→        variant: "destructive",
+  1130→      });
+  1131→    } finally {
+  1132→      setUploading(false);
+  1133→    }
+  1134→  };
+  1135→
+  1136→  const submit = async () => {
+  1137→    if (!name.trim() || !grade || !studentNumber.trim()) {
+  1138→      toast({ title: "يرجى إكمال جميع الحقول المطلوبة", variant: "destructive" });
+  1139→      return;
+  1140→    }
+  1141→    setSaving(true);
+  1142→    try {
+  1143→      const res = await fetch("/api/students", {
+  1144→        method: "POST",
+  1145→        headers: { "Content-Type": "application/json" },
+  1146→        body: JSON.stringify({
+  1147→          name: name.trim(),
+  1148→          grade,
+  1149→          studentNumber: studentNumber.trim(),
+  1150→          parentName: parentName.trim(),
+  1151→          parentPhone: parentPhone.trim(),
+  1152→          parentEmail: parentEmail.trim(),
+  1153→          photoUrl,
+  1154→        }),
+  1155→      });
+  1156→      const data = await res.json();
+  1157→      if (!res.ok) throw new Error(data.error);
+  1158→      toast({ title: "تمت الإضافة", description: `أُضيف ${data.student.name}` });
+  1159→      setName("");
+  1160→      setStudentNumber("");
+  1161→      setParentName("");
+  1162→      setParentPhone("");
+  1163→      setParentEmail("");
+  1164→      setPhotoUrl("");
+  1165→      setGrade(GRADES[0]);
+  1166→      onOpenChange(false);
+  1167→      onCreated();
+  1168→    } catch (e) {
+  1169→      toast({
+  1170→        title: "خطأ",
+  1171→        description: e instanceof Error ? e.message : "فشل",
+  1172→        variant: "destructive",
+  1173→      });
+  1174→    } finally {
+  1175→      setSaving(false);
+  1176→    }
+  1177→  };
+  1178→
+  1179→  return (
+  1180→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1181→      <DialogTrigger asChild>
+  1182→        <Button size="sm">
+  1183→          <Plus className="ml-2 h-4 w-4" />
+  1184→          إضافة طالب
+  1185→        </Button>
+  1186→      </DialogTrigger>
+  1187→        <DialogContent>
+  1188→        <DialogHeader>
+  1189→          <DialogTitle>إضافة طالب جديد</DialogTitle>
+  1190→          <DialogDescription>
+  1191→            سيتم إنشاء QR Code فريد تلقائياً عند الإضافة، وستصدر إشعارات لولي الأمر عند كل دخول/خروج.
+  1192→          </DialogDescription>
+  1193→        </DialogHeader>
+  1194→        <div className="flex flex-col gap-4 py-2">
+  1195→          <div className="flex flex-col gap-1.5">
+  1196→            <Label htmlFor="add-name">الاسم الكامل</Label>
+  1197→            <Input
+  1198→              id="add-name"
+  1199→              value={name}
+  1200→              onChange={(e) => setName(e.target.value)}
+  1201→              placeholder="مثال: أحمد محمد علي"
+  1202→            />
+  1203→          </div>
+  1204→          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+  1205→            <div className="flex flex-col gap-1.5">
+  1206→              <Label htmlFor="add-grade">الصف الدراسي</Label>
+  1207→              <Select value={grade} onValueChange={setGrade}>
+  1208→                <SelectTrigger id="add-grade">
+  1209→                  <SelectValue />
+  1210→                </SelectTrigger>
+  1211→                <SelectContent>
+  1212→                  {GRADES.map((g) => (
+  1213→                    <SelectItem key={g} value={g}>
+  1214→                      {g}
+  1215→                    </SelectItem>
+  1216→                  ))}
+  1217→                </SelectContent>
+  1218→              </Select>
+  1219→            </div>
+  1220→            <div className="flex flex-col gap-1.5">
+  1221→              <Label htmlFor="add-num">رقم الطالب</Label>
+  1222→              <Input
+  1223→                id="add-num"
+  1224→                value={studentNumber}
+  1225→                onChange={(e) => setStudentNumber(e.target.value)}
+  1226→                placeholder="مثال: 1009"
+  1227→                inputMode="numeric"
+  1228→              />
+  1229→            </div>
+  1230→          </div>
+  1231→          <Separator />
+  1232→          <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+  1233→            <ImageIcon className="h-4 w-4" />
+  1234→            صورة الطالب (للتحقق البصري عند البوابة)
+  1235→          </div>
+  1236→          <div className="flex items-center gap-4">
+  1237→            <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-border bg-muted/40">
+  1238→              {photoUrl ? (
+  1239→                // eslint-disable-next-line @next/next/no-img-element
+  1240→                <img src={photoUrl} alt="معاينة" className="h-full w-full object-cover" />
+  1241→              ) : (
+  1242→                <ImageIcon className="h-8 w-8 text-muted-foreground" />
+  1243→              )}
+  1244→            </div>
+  1245→            <div className="flex flex-col gap-2">
+  1246→              <label htmlFor="photo-input">
+  1247→                <Button
+  1248→                  type="button"
+  1249→                  variant="outline"
+  1250→                  size="sm"
+  1251→                  asChild
+  1252→                  disabled={uploading}
+  1253→                >
+  1254→                  <span>
+  1255→                    <Upload className="ml-2 h-4 w-4" />
+  1256→                    {uploading ? "جارٍ الرفع..." : "رفع صورة"}
+  1257→                  </span>
+  1258→                </Button>
+  1259→              </label>
+  1260→              <input
+  1261→                id="photo-input"
+  1262→                type="file"
+  1263→                accept="image/*"
+  1264→                onChange={handlePhotoUpload}
+  1265→                className="hidden"
+  1266→              />
+  1267→              {photoUrl && (
+  1268→                <Button
+  1269→                  type="button"
+  1270→                  variant="ghost"
+  1271→                  size="sm"
+  1272→                  onClick={() => setPhotoUrl("")}
+  1273→                >
+  1274→                  إزالة
+  1275→                </Button>
+  1276→              )}
+  1277→              <p className="text-xs text-muted-foreground">
+  1278→                اختياري — PNG/JPG، حتى 4MB
+  1279→              </p>
+  1280→            </div>
+  1281→          </div>
+  1282→          <Separator />
+  1283→          <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+  1284→            <User className="h-4 w-4" />
+  1285→            بيانات ولي الأمر (للإشعارات)
+  1286→          </div>
+  1287→          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+  1288→            <div className="flex flex-col gap-1.5">
+  1289→              <Label htmlFor="add-parent-name">اسم ولي الأمر</Label>
+  1290→              <Input
+  1291→                id="add-parent-name"
+  1292→                value={parentName}
+  1293→                onChange={(e) => setParentName(e.target.value)}
+  1294→                placeholder="مثال: محمد علي"
+  1295→              />
+  1296→            </div>
+  1297→            <div className="flex flex-col gap-1.5">
+  1298→              <Label htmlFor="add-parent-phone">رقم موبايل ولي الأمر</Label>
+  1299→              <Input
+  1300→                id="add-parent-phone"
+  1301→                value={parentPhone}
+  1302→                onChange={(e) => setParentPhone(e.target.value)}
+  1303→                placeholder="مثال: 01012345679"
+  1304→                inputMode="tel"
+  1305→                dir="ltr"
+  1306→              />
+  1307→            </div>
+  1308→          </div>
+  1309→          <div className="flex flex-col gap-1.5">
+  1310→            <Label htmlFor="add-parent-email">بريد ولي الأمر (للإشعارات)</Label>
+  1311→            <Input
+  1312→              id="add-parent-email"
+  1313→              type="email"
+  1314→              value={parentEmail}
+  1315→              onChange={(e) => setParentEmail(e.target.value)}
+  1316→              placeholder="مثال: parent@email.com"
+  1317→              dir="ltr"
+  1318→            />
+  1319→          </div>
+  1320→        </div>
+  1321→        <DialogFooter>
+  1322→          <Button
+  1323→            variant="outline"
+  1324→            onClick={() => onOpenChange(false)}
+  1325→            disabled={saving}
+  1326→          >
+  1327→            إلغاء
+  1328→          </Button>
+  1329→          <Button onClick={submit} disabled={saving}>
+  1330→            {saving ? (
+  1331→              <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+  1332→            ) : (
+  1333→              <Plus className="ml-2 h-4 w-4" />
+  1334→            )}
+  1335→            إضافة
+  1336→          </Button>
+  1337→        </DialogFooter>
+  1338→      </DialogContent>
+  1339→    </Dialog>
+  1340→  );
+  1341→}
+  1342→
+  1343→// ---------- Student row ----------
+  1344→function StudentRow({
+  1345→  student,
+  1346→  onChanged,
+  1347→}: {
+  1348→  student: Student;
+  1349→  onChanged: () => void;
+  1350→}) {
+  1351→  const [busy, setBusy] = useState(false);
+  1352→  const [confirmDel, setConfirmDel] = useState(false);
+  1353→
+  1354→  const toggleActive = async () => {
+  1355→    setBusy(true);
+  1356→    try {
+  1357→      const res = await fetch(`/api/students/${student.id}`, {
+  1358→        method: "PATCH",
+  1359→        headers: { "Content-Type": "application/json" },
+  1360→        body: JSON.stringify({ active: !student.active }),
+  1361→      });
+  1362→      if (!res.ok) throw new Error("fail");
+  1363→      toast({
+  1364→        title: student.active ? "تم إيقاف الحساب" : "تم تفعيل الحساب",
+  1365→        description: student.name,
+  1366→      });
+  1367→      onChanged();
+  1368→    } catch {
+  1369→      toast({ title: "فشل التحديث", variant: "destructive" });
+  1370→    } finally {
+  1371→      setBusy(false);
+  1372→    }
+  1373→  };
+  1374→
+  1375→  const remove = async () => {
+  1376→    setBusy(true);
+  1377→    try {
+  1378→      const res = await fetch(`/api/students/${student.id}`, {
+  1379→        method: "DELETE",
+  1380→      });
+  1381→      if (!res.ok) throw new Error("fail");
+  1382→      toast({ title: "تم حذف الطالب", description: student.name });
+  1383→      onChanged();
+  1384→    } catch {
+  1385→      toast({ title: "فشل الحذف", variant: "destructive" });
+  1386→      setBusy(false);
+  1387→    }
+  1388→  };
+  1389→
+  1390→  return (
+  1391→    <TableRow>
+  1392→      <TableCell>
+  1393→        {student.photoUrl ? (
+  1394→          // eslint-disable-next-line @next/next/no-img-element
+  1395→          <img
+  1396→            src={student.photoUrl}
+  1397→            alt={student.name}
+  1398→            className="h-10 w-10 rounded-lg object-cover"
+  1399→          />
+  1400→        ) : (
+  1401→          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+  1402→            <ImageIcon className="h-5 w-5 text-muted-foreground" />
+  1403→          </div>
+  1404→        )}
+  1405→      </TableCell>
+  1406→      <TableCell className="font-medium">{student.name}</TableCell>
+  1407→      <TableCell className="hidden text-muted-foreground md:table-cell">
+  1408→        {student.grade}
+  1409→      </TableCell>
+  1410→      <TableCell className="text-muted-foreground">
+  1411→        {student.studentNumber}
+  1412→      </TableCell>
+  1413→      <TableCell className="hidden lg:table-cell">
+  1414→        <div className="flex flex-col">
+  1415→          <span className="text-sm">{student.parentName ?? "—"}</span>
+  1416→          {student.parentPhone && (
+  1417→            <span className="flex items-center gap-1 text-xs text-muted-foreground" dir="ltr">
+  1418→              <Phone className="h-3 w-3" />
+  1419→              {student.parentPhone}
+  1420→            </span>
+  1421→          )}
+  1422→        </div>
+  1423→      </TableCell>
+  1424→      <TableCell className="hidden sm:table-cell">
+  1425→        <Badge variant="secondary">{student._count?.logs ?? 0}</Badge>
+  1426→      </TableCell>
+  1427→      <TableCell>
+  1428→        {student.active ? (
+  1429→          <Badge className="bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/15">
+  1430→            نشط
+  1431→          </Badge>
+  1432→        ) : (
+  1433→          <Badge variant="destructive">موقوف</Badge>
+  1434→        )}
+  1435→      </TableCell>
+  1436→      <TableCell>
+  1437→        <div className="flex items-center justify-end gap-2">
+  1438→          <div className="flex items-center gap-1.5">
+  1439→            <Switch
+  1440→              checked={student.active}
+  1441→              onCheckedChange={toggleActive}
+  1442→              disabled={busy}
+  1443→              aria-label="تفعيل/إيقاف"
+  1444→            />
+  1445→            <Power
+  1446→              className={`h-4 w-4 ${student.active ? "text-emerald-600" : "text-muted-foreground"}`}
+  1447→            />
+  1448→          </div>
+  1449→          <Button
+  1450→            variant="ghost"
+  1451→            size="icon"
+  1452→            className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+  1453→            onClick={() => setConfirmDel(true)}
+  1454→            disabled={busy}
+  1455→          >
+  1456→            <Trash2 className="h-4 w-4" />
+  1457→          </Button>
+  1458→          <Dialog open={confirmDel} onOpenChange={setConfirmDel}>
+  1459→            <DialogContent className="max-w-sm">
+  1460→              <DialogHeader>
+  1461→                <DialogTitle>تأكيد الحذف</DialogTitle>
+  1462→                <DialogDescription>
+  1463→                  هل أنت متأكد من حذف الطالب &quot;{student.name}&quot;؟ سيتم حذف جميع سجلاته نهائياً.
+  1464→                </DialogDescription>
+  1465→              </DialogHeader>
+  1466→              <DialogFooter>
+  1467→                <Button
+  1468→                  variant="outline"
+  1469→                  onClick={() => setConfirmDel(false)}
+  1470→                  disabled={busy}
+  1471→                >
+  1472→                  إلغاء
+  1473→                </Button>
+  1474→                <Button variant="destructive" onClick={remove} disabled={busy}>
+  1475→                  {busy ? (
+  1476→                    <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+  1477→                  ) : (
+  1478→                    <Trash2 className="ml-2 h-4 w-4" />
+  1479→                  )}
+  1480→                  حذف نهائي
+  1481→                </Button>
+  1482→              </DialogFooter>
+  1483→            </DialogContent>
+  1484→          </Dialog>
+  1485→        </div>
+  1486→      </TableCell>
+  1487→    </TableRow>
+  1488→  );
+  1489→}
+  1490→
